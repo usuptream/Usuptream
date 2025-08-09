@@ -1,0 +1,196 @@
+<!DOCTYPE html><html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CASINO CRASHER</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; font-family:'Poppins',sans-serif; }
+    body { background: url('https://files.catbox.moe/n0py7g.png') center/cover no-repeat; min-height:100vh; display:flex; justify-content:center; align-items:center; padding:20px; }
+    .card { background: rgba(0,0,0,0.85); padding:24px; border-radius:14px; width:380px; text-align:center; box-shadow: 0 0 20px rgba(255,0,0,0.45); border:1px solid rgba(255,0,0,0.35); }
+    .avatar { width:96px; height:96px; border-radius:50%; border:3px solid red; margin-bottom:12px; box-shadow:0 0 20px red; object-fit:cover; }
+    h1 { font-size:24px; font-weight:700; color:#fff; text-shadow:0 0 8px red; margin-bottom:6px; }
+    p { font-size:12px; color:#ccc; margin-bottom:14px; }
+    input, select { width:100%; padding:10px; margin:8px 0; border:none; border-radius:6px; background:#111; color:#fff; outline:none; font-size:14px; border:1px solid rgba(255,0,0,0.25); }
+    input[type=date] { padding:8px 10px; }
+    .btn { width:100%; padding:10px; margin-top:10px; border:none; border-radius:6px; background:linear-gradient(90deg,#ff0000,#cc0000); color:#fff; font-weight:700; cursor:pointer; font-size:14px; box-shadow:0 0 10px red; transition:0.2s; }
+    .btn:hover{ transform:translateY(-2px); }
+    .btn.danger{ background:#990000; }
+    .link { display:block; margin-top:12px; font-size:12px; color:#ff7b7b; cursor:pointer; text-decoration:underline; }
+    .section { text-align:left; margin-top:14px; }
+    .section label { color:#ddd; font-size:13px; display:block; margin-bottom:6px; }
+    .small { font-size:12px; color:#bbb; }
+    .users-list { max-height:120px; overflow:auto; margin-top:10px; text-align:left; }
+    .users-list li { color:#ddd; font-size:13px; padding:6px 0; border-bottom:1px dashed rgba(255,0,0,0.04); }
+</style>
+</head>
+<body><div class="card" id="login-page">
+    <img src="https://files.catbox.moe/n0py7g.png" class="avatar" alt="avatar">
+    <h1>CASINO CRASHER</h1>
+    <p>Restricted Access - Authorized Personnel Only</p>
+    <input type="text" id="login-username" placeholder="Enter your username" autocomplete="username">
+    <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password">
+    <button class="btn" onclick="login()">ACCESS SYSTEM</button>
+    <p class="small">Note: Akun yang dibuat memiliki tanggal expired (jika diset) — setelah lewat, akun tidak bisa login.</p>
+</div><div class="card" id="register-page" style="display:none;">
+    <img src="https://files.catbox.moe/n0py7g.png" class="avatar" alt="avatar">
+    <h1>CASINO CRASHER</h1>
+    <p>Register Akun Member</p>
+    <input type="text" id="reg-username" placeholder="Username">
+    <input type="password" id="reg-password" placeholder="Password">
+    <button class="btn" onclick="registerPublic()">REGISTER</button>
+    <span class="link" onclick="showLogin()">Sudah punya akun? Login</span>
+</div><div class="card" id="tools-page" style="display:none;">
+    <img src="https://files.catbox.moe/n0py7g.png" class="avatar" alt="avatar">
+    <h1>CASINO CRASHER</h1>
+    <p id="roleInfo"></p><div class="section"><label>Nomor target:</label>
+    <input type="text" id="targetNumber" placeholder="Masukkan nomor target (62...)"/>
+</div>
+
+<button class="btn" onclick="doAction('Crash WA')">Crash WA</button>
+<button class="btn" onclick="doAction('FC Invisible')">FC Invisible</button>
+<button class="btn" onclick="doAction('Ultra Delay')">Ultra Delay</button>
+<button class="btn" onclick="doAction('Blank Message')">Blank Message</button>
+
+<div id="create-area" class="section" style="display:none;">
+    <hr>
+    <label>Buat Akun Baru (oleh role yang berwenang)</label>
+    <input type="text" id="create-username" placeholder="Username baru">
+    <input type="password" id="create-password" placeholder="Password baru">
+    <select id="create-role"></select>
+    <label>Tanggal Expired:</label>
+    <input type="date" id="create-expired">
+    <button class="btn" id="create-btn" onclick="createAccount()">Buat Akun</button>
+    <p class="small">Cooldown pembuatan: <span id="cooldown-display">0</span>s</p>
+</div>
+
+<div class="section" style="margin-top:12px;">
+    <label>Daftar Akun (tersimpan di browser):</label>
+    <ul class="users-list" id="usersList"></ul>
+</div>
+
+<button class="btn danger" onclick="logout()">LOGOUT</button>
+
+</div><script>
+// --- Data & Konstanta ---
+let users = JSON.parse(localStorage.getItem('users')) || [];
+const DEV_CREDENTIALS = { username: 'devadmin', password: 'devpass123' };
+let currentUser = null;
+let createCooldown = false;
+let cooldownRemaining = 0;
+const CREATE_COOLDOWN_SECONDS = 10; // default cooldown after membuat akun
+
+const ROLE_CREATION_MAP = {
+    'Member': [],
+    'Reseller': ['Member'],
+    'Admin': ['Member','Reseller'],
+    'Ceo': ['Member','Reseller','Admin'],
+    'Owner': ['Member','Reseller','Admin','Ceo'],
+    'Developer': ['Member','Reseller','Admin','Ceo','Owner']
+};
+
+// --- Utility ---
+function saveUsers(){ localStorage.setItem('users', JSON.stringify(users)); renderUsersList(); }
+function renderUsersList(){ const ul = document.getElementById('usersList'); ul.innerHTML=''; if(users.length===0){ ul.innerHTML='<li class="small">Belum ada akun tersimpan.</li>'; return; } users.forEach(u=>{ const li=document.createElement('li'); const exp = u.expired ? (' — expired: '+u.expired) : ''; li.textContent = u.username + ' (' + u.role + ')' + exp; ul.appendChild(li); }); }
+function showRegister(){ document.getElementById('login-page').style.display='none'; document.getElementById('register-page').style.display='block'; }
+function showLogin(){ document.getElementById('register-page').style.display='none'; document.getElementById('login-page').style.display='block'; }
+
+// --- Public Registration (Member) ---
+function registerPublic(){
+    let username = document.getElementById('reg-username').value.trim();
+    let password = document.getElementById('reg-password').value.trim();
+    if(!username || !password){ alert('Lengkapi semua field!'); return; }
+    if(users.find(u=>u.username===username)){ alert('Username sudah ada!'); return; }
+    // default public member registration: no expired (can be set by creator later)
+    users.push({ username, password, role: 'Member' });
+    saveUsers();
+    alert('Registrasi berhasil! Akun Anda sebagai MEMBER. Silakan login.');
+    document.getElementById('reg-username').value=''; document.getElementById('reg-password').value='';
+    showLogin();
+}
+
+// --- Login ---
+function login(){
+    let username = document.getElementById('login-username').value.trim();
+    let password = document.getElementById('login-password').value.trim();
+    let user = users.find(u=>u.username===username && u.password===password);
+    if(user){
+        // cek expired
+        if(user.expired){
+            const today = new Date(); today.setHours(0,0,0,0);
+            const expDate = new Date(user.expired); expDate.setHours(0,0,0,0);
+            if(today > expDate){ alert('Akun sudah expired! Hubungi pembuat akun atau admin.'); return; }
+        }
+        enterTools(user.username, user.role); return;
+    }
+    // developer bypass (tidak tersimpan di users)
+    if(username === DEV_CREDENTIALS.username && password === DEV_CREDENTIALS.password){ enterTools(username,'Developer'); return; }
+    alert('Invalid credentials.');
+}
+
+function enterTools(username, role){
+    currentUser = { username, role };
+    document.getElementById('login-page').style.display='none';
+    document.getElementById('register-page').style.display='none';
+    document.getElementById('tools-page').style.display='block';
+    document.getElementById('roleInfo').innerText = 'Role Anda: ' + role + ' — (logged in: ' + username + ')';
+    setupCreateAreaForRole(role);
+}
+
+function logout(){ currentUser=null; document.getElementById('tools-page').style.display='none'; document.getElementById('login-page').style.display='block'; }
+
+// --- Actions ---
+function doAction(act){ let num=document.getElementById('targetNumber').value.trim(); if(!num){ alert('Masukkan nomor target terlebih dahulu!'); return; } alert(act + ' berhasil dikirim ke ' + num + ' ✅'); }
+
+// --- Account creation by authorized roles ---
+function setupCreateAreaForRole(role){ const area=document.getElementById('create-area'); const select=document.getElementById('create-role'); select.innerHTML=''; const allowed = ROLE_CREATION_MAP[role] || []; if(allowed.length === 0){ area.style.display='none'; return; } area.style.display='block'; allowed.forEach(r=>{ const opt=document.createElement('option'); opt.value=r; opt.innerText=r; select.appendChild(opt); });
+    // set default expired date (optional): default 30 hari dari sekarang
+    const expInput = document.getElementById('create-expired');
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 30);
+    expInput.value = tomorrow.toISOString().slice(0,10);
+}
+
+function createAccount(){
+    if(!currentUser){ alert('Tidak terautentikasi.'); return; }
+    if(createCooldown){ alert('Tunggu cooldown sebelum membuat akun lagi.'); return; }
+    const allowed = ROLE_CREATION_MAP[currentUser.role] || [];
+    if(allowed.length === 0){ alert('Role Anda tidak diizinkan membuat akun.'); return; }
+
+    const username = document.getElementById('create-username').value.trim();
+    const password = document.getElementById('create-password').value.trim();
+    const role = document.getElementById('create-role').value;
+    const expired = document.getElementById('create-expired').value; // YYYY-MM-DD
+
+    if(!username || !password || !role || !expired){ alert('Lengkapi semua field termasuk tanggal expired!'); return; }
+    if(!allowed.includes(role)){ alert('Anda tidak dapat membuat role ' + role); return; }
+    if(users.find(u=>u.username===username)){ alert('Username sudah ada.'); return; }
+
+    users.push({ username, password, role, expired });
+    saveUsers();
+    alert('Akun ' + username + ' berhasil dibuat sebagai ' + role + ' (Expired: ' + expired + ').');
+    document.getElementById('create-username').value=''; document.getElementById('create-password').value='';
+
+    // start cooldown
+    startCreateCooldown(CREATE_COOLDOWN_SECONDS);
+}
+
+function startCreateCooldown(seconds){
+    createCooldown = true; cooldownRemaining = seconds;
+    const btn = document.getElementById('create-btn'); const cdDisplay = document.getElementById('cooldown-display');
+    btn.disabled = true; btn.style.opacity = 0.7;
+    cdDisplay.innerText = cooldownRemaining;
+    const interval = setInterval(()=>{
+        cooldownRemaining--;
+        cdDisplay.innerText = cooldownRemaining;
+        btn.innerText = 'Tunggu ' + cooldownRemaining + 's';
+        if(cooldownRemaining <= 0){ clearInterval(interval); createCooldown=false; btn.disabled=false; btn.style.opacity=1; btn.innerText='Buat Akun'; cdDisplay.innerText = 0; }
+    },1000);
+}
+
+// --- Init ---
+(function init(){ renderUsersList(); // optional: create a default developer account in storage (disabled) 
+    // Example: if you want a default admin saved, uncomment below (runs only if no users yet)
+    // if(users.length===0){ users.push({username:'admin',password:'admin123',role:'Owner',expired:''}); saveUsers(); }
+})();
+
+</script></body>
+</html>
